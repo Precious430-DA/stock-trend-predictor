@@ -5,7 +5,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
+st.set_page_config(page_title="PredictiTrade", layout="centered")
 st.title("📈 AI Stock Trend Predictor (US Stocks)")
+
 ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
 
 def get_data(ticker):
@@ -18,7 +20,10 @@ def get_data(ticker):
 if ticker:
     try:
         df = get_data(ticker)
-        st.subheader(f"Latest data for {ticker}")
+
+        st.subheader(f"📊 Latest Data for {ticker.upper()}")
+        st.line_chart(df['Close'])
+
         st.dataframe(df.tail())
 
         features = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -34,11 +39,17 @@ if ticker:
         st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
 
         next_day = model.predict(X.tail(1))[0]
+        st.markdown("### 🔮 Prediction for Tomorrow:")
         if next_day:
-            st.markdown("### 📈 Prediction: The stock might go **UP** tomorrow.")
+            st.markdown("📈 The stock might go **UP** tomorrow.")
         else:
-            st.markdown("### 📉 Prediction: The stock might go **DOWN** tomorrow.")
+            st.markdown("📉 The stock might go **DOWN** tomorrow.")
+
+        st.markdown("---")
+        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
+        st.markdown("💻 Made with ❤️ by PredictiTrade")
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
+
 
