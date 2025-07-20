@@ -47,7 +47,7 @@ if ticker:
 
         st.markdown("---")
         st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
-        st.markdown("💻 Made with ❤️ by PredictiTrade")
+        st.markdown("💻 Made by Precious Ofoyekpene")
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
