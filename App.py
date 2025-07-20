@@ -1,70 +1,81 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+import pandas as pd
+import plotly.graph_objects as go
+import datetime
 
-st.set_page_config(page_title="PredictiTrade", layout="centered")
-st.title("📈 PredictiTrade – AI Stock Trend Predictor")
+# --- APP TITLE ---
+st.set_page_config(page_title="PredictiTrade", layout="wide")
+st.title("📈 PredictiTrade - Stock Trend Predictor")
 
-ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
+# --- SIDEBAR ---
+st.sidebar.header("📌 Configuration")
 
-def get_data(ticker):
-    df = yf.download(ticker, period="6mo")
-    df.dropna(inplace=True)
-    df['SMA20'] = df['Close'].rolling(window=20).mean()
-    df['SMA50'] = df['Close'].rolling(window=50).mean()
-    df['RSI'] = compute_rsi(df['Close'], 14)
-    df['Target'] = df['Close'].shift(-1) > df['Close']
-    df.dropna(inplace=True)
+ticker = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL, TSLA, MSFT)", value="AAPL").upper()
+start_date = st.sidebar.date_input("Start Date", datetime.date(2022, 1, 1))
+end_date = st.sidebar.date_input("End Date", datetime.date.today())
+show_candlestick = st.sidebar.checkbox("Show Candlestick Chart", value=False)
+show_sma50 = st.sidebar.checkbox("Show SMA50")
+show_sma100 = st.sidebar.checkbox("Show SMA100")
+show_rsi = st.sidebar.checkbox("Show RSI")
+
+# --- DOWNLOAD DATA ---
+@st.cache_data
+def load_data(ticker, start, end):
+    df = yf.download(ticker, start=start, end=end)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = ['_'.join(col).strip() if isinstance(col, tuple) else col for col in df.columns]
+    df.reset_index(inplace=True)
     return df
 
-def compute_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+df = load_data(ticker, start_date, end_date)
 
-if ticker:
-    try:
-        df = get_data(ticker)
+if df.empty:
+    st.error("No data found for the selected ticker and date range.")
+    st.stop()
 
-        # Show main chart first
-        st.subheader(f"📊 {ticker.upper()} Price Chart")
-        st.line_chart(df[['Close']])
+# --- CALCULATE INDICATORS ---
+df['SMA50'] = df['Close'].rolling(window=50).mean()
+df['SMA100'] = df['Close'].rolling(window=100).mean()
 
-        # Add indicator section
-        st.subheader("📐 Technical Indicators")
-        st.line_chart(df[['SMA20', 'SMA50']])
-        st.line_chart(df[['RSI']])
+# RSI function
+def calculate_rsi(data, window=14):
+    delta = data['Close'].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window).mean()
+    avg_loss = loss.rolling(window).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
-        st.dataframe(df.tail())
+df['RSI'] = calculate_rsi(df)
 
-        # Model training
-        features = ['Open', 'High', 'Low', 'Close', 'Volume']
-        X = df[features]
-        y = df['Target']
+# --- DISPLAY PRICE CHART ---
+st.subheader(f"📊 {ticker} Stock Price Chart")
+fig = go.Figure()
 
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        model = RandomForestClassifier()
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+if show_candlestick:
+    fig.add_trace(go.Candlestick(x=df['Date'],
+                                 open=df['Open'], high=df['High'],
+                                 low=df['Low'], close=df['Close'],
+                                 name='Candlestick'))
+else:
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name="Close Price", line=dict(color='blue')))
 
-        acc = accuracy_score(y_test, y_pred)
-        st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
+if show_sma50:
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA50'], name="SMA50", line=dict(color='orange')))
 
-        next_day = model.predict(X.tail(1))[0]
-        st.markdown("### 🔮 Prediction for Tomorrow:")
-        if next_day:
-            st.markdown("📈 The stock might go **UP** tomorrow.")
-        else:
-            st.markdown("📉 The stock might go **DOWN** tomorrow.")
+if show_sma100:
+    fig.add_trace(go.Scatter(x=df['Date'], y=df['SMA100'], name="SMA100", line=dict(color='green')))
 
-        st.markdown("---")
-        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
-        st.markdown("💻 Made by Precious Ofoyekpene")
+fig.update_layout(xaxis_title="Date", yaxis_title="Price", xaxis_rangeslider_visible=False, height=500)
+st.plotly_chart(fig, use_container_width=True)
 
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+# --- RSI CHART BELOW ---
+if show_rsi:
+    st.subheader("📐 RSI Indicator")
+    rsi_fig = go.Figure()
+    rsi_fig.add_trace(go.Scatter(x=df['Date'], y=df['RSI'], name="RSI", line=dict(color='purple')))
+    rsi_fig.add_hline(y=70, line_dash="dot", line_color="red")
+    rsi_fig.add_hline(y=30, line_dash="dot_
