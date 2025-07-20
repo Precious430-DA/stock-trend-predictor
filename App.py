@@ -5,18 +5,16 @@ import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import openai
 
 # Page Config
 st.set_page_config(page_title="PredictiTrade", layout="centered")
-
 st.title("📈 AI Stock Trend Predictor (US Stocks)")
 
 # Sidebar: User Inputs
 ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
-
 start_date = st.date_input("📅 Start date", pd.to_datetime("2024-01-01"))
 end_date = st.date_input("📅 End date", pd.to_datetime("today"))
-
 show_candle = st.checkbox("📊 Show Candlestick Chart", value=True)
 
 # Get Data
@@ -44,7 +42,8 @@ if ticker:
                 close=df['Close'],
                 name="Candles"
             )])
-            fig.update_layout(title=f"Candlestick chart for {ticker.upper()}", xaxis_title="Date", yaxis_title="Price")
+            fig.update_layout(title=f"Candlestick chart for {ticker.upper()}",
+                              xaxis_title="Date", yaxis_title="Price")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.line_chart(df['Close'])
@@ -71,11 +70,13 @@ if ticker:
         else:
             st.markdown("📉 The stock might go **DOWN** tomorrow.")
 
-        # Simple Chat Box
-        import openai
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
 
+# ChatGPT Integration
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
+st.markdown("---")
 st.markdown("🧠 **Ask ChatGPT about stocks, trading, or investing**")
 user_question = st.text_input("💬 Ask ChatGPT:")
 
@@ -93,10 +94,7 @@ if user_question:
         except Exception as e:
             st.error(f"❌ Failed to get response: {e}")
 
-        # Footer
-        st.markdown("---")
-        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
-        st.markdown("💻 Made by Precious Ofoyekpene")
-
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+# Footer
+st.markdown("---")
+st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
+st.markdown("💻 Made by Precious Ofoyekpene")
