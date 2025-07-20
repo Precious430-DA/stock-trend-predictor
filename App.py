@@ -72,13 +72,26 @@ if ticker:
             st.markdown("📉 The stock might go **DOWN** tomorrow.")
 
         # Simple Chat Box
-        st.markdown("---")
-        st.markdown("🗨️ **Ask or Leave a Comment**")
-        user_message = st.text_input("💬 Type your message here:")
+        import openai
 
-        if user_message:
-            st.write("🤖 Bot Response:")
-            st.info("Thanks for your message! We will improve your experience soon. 🙌")
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+st.markdown("🧠 **Ask ChatGPT about stocks, trading, or investing**")
+user_question = st.text_input("💬 Ask ChatGPT:")
+
+if user_question:
+    with st.spinner("Thinking..."):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",  # Or use "gpt-3.5-turbo"
+                messages=[{"role": "user", "content": user_question}],
+                temperature=0.7,
+                max_tokens=300,
+            )
+            st.success("🤖 ChatGPT says:")
+            st.write(response.choices[0].message["content"])
+        except Exception as e:
+            st.error(f"❌ Failed to get response: {e}")
 
         # Footer
         st.markdown("---")
