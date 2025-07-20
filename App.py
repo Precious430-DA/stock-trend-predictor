@@ -1,77 +1,89 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-import numpy as np
-import matplotlib.pyplot as plt
-from openai import OpenAI
 
-# Setup OpenAI client
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Page Config
+st.set_page_config(page_title="PredictiTrade", layout="centered")
 
-# Streamlit page config
-st.set_page_config(page_title="PredictiTrade", layout="wide")
 st.title("📈 AI Stock Trend Predictor (US Stocks)")
 
-# Sidebar
-st.sidebar.header("📊 Configuration")
-ticker = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL)", value="AAPL")
-start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
-end_date = st.sidebar.date_input("End Date", pd.to_datetime("2024-01-01"))
+# Sidebar: User Inputs
+ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
 
-# Load data
+start_date = st.date_input("📅 Start date", pd.to_datetime("2024-01-01"))
+end_date = st.date_input("📅 End date", pd.to_datetime("today"))
+
+show_candle = st.checkbox("📊 Show Candlestick Chart", value=True)
+
+# Get Data
 @st.cache_data
-def load_data(ticker):
-    df = yf.download(ticker, start=start_date, end=end_date)
-    df["Return"] = df["Close"].pct_change()
-    df["Target"] = np.where(df["Return"].shift(-1) > 0, 1, 0)
-    return df.dropna()
+def get_data(ticker, start, end):
+    df = yf.download(ticker, start=start, end=end)
+    df.dropna(inplace=True)
+    df['Target'] = df['Close'].shift(-1) > df['Close']
+    df.dropna(inplace=True)
+    return df
 
-df = load_data(ticker)
+if ticker:
+    try:
+        df = get_data(ticker, start_date, end_date)
 
-# Feature engineering
-features = df[["Open", "High", "Low", "Close", "Volume"]]
-target = df["Target"]
-X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, shuffle=False)
+        st.subheader(f"📊 Data for {ticker.upper()} from {start_date} to {end_date}")
 
-# Train model
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-predictions = model.predict(X_test)
-acc = accuracy_score(y_test, predictions)
+        if show_candle:
+            # Candlestick Chart
+            fig = go.Figure(data=[go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name="Candles"
+            )])
+            fig.update_layout(title=f"Candlestick chart for {ticker.upper()}", xaxis_title="Date", yaxis_title="Price")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.line_chart(df['Close'])
 
-# Show accuracy
-st.subheader("📌 Model Accuracy")
-st.metric("Accuracy", f"{acc:.2%}")
+        st.dataframe(df.tail())
 
-# Plot close price
-st.subheader(f"📉 {ticker} Closing Price")
-fig, ax = plt.subplots()
-df["Close"].plot(ax=ax, label="Close Price")
-ax.set_ylabel("Price")
-ax.set_title(f"{ticker} Price Chart")
-st.pyplot(fig)
+        # ML Part
+        features = ['Open', 'High', 'Low', 'Close', 'Volume']
+        X = df[features]
+        y = df['Target']
 
-# Predict next day
-st.subheader("🔮 Prediction for Next Day")
-latest_data = features.iloc[-1:].values.reshape(1, -1)
-prediction = model.predict(latest_data)[0]
-trend = "📈 Up" if prediction == 1 else "📉 Down"
-st.success(f"Predicted Trend: {trend}")
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+        model = RandomForestClassifier()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-# ChatGPT integration
-st.subheader("💬 Ask ChatGPT About Markets")
+        acc = accuracy_score(y_test, y_pred)
+        st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
 
-user_prompt = st.text_area("Ask anything about trading or stocks:")
-if user_prompt:
-    with st.spinner("ChatGPT is thinking..."):
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful trading assistant."},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        st.write(response.choices[0].message.content)
+        next_day = model.predict(X.tail(1))[0]
+        st.markdown("### 🔮 Prediction for Tomorrow:")
+        if next_day:
+            st.markdown("📈 The stock might go **UP** tomorrow.")
+        else:
+            st.markdown("📉 The stock might go **DOWN** tomorrow.")
+
+        # Simple Chat Box
+        st.markdown("---")
+        st.markdown("🗨️ **Ask or Leave a Comment**")
+        user_message = st.text_input("💬 Type your message here:")
+
+        if user_message:
+            st.write("🤖 Bot Response:")
+            st.info("Thanks for your message! We will improve your experience soon. 🙌")
+
+        # Footer
+        st.markdown("---")
+        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
+        st.markdown("💻 Made by Precious Ofoyekpene")
+
+    except Exception as e:
+        st.error(f"An error occurred: {e}"
