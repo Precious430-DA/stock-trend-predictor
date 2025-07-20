@@ -86,4 +86,4 @@ if ticker:
         st.markdown("💻 Made by Precious Ofoyekpene")
 
     except Exception as e:
-        st.error(f"An error occurred: {e}"
+        st.error(f"An error occurred: {e}")
