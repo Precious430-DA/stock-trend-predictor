@@ -1,56 +1,57 @@
-import streamlit as st
+mport streamlit as st
 import pandas as pd
 import yfinance as yf
+import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-import plotly.graph_objects as go
-import plotly.express as px
 
+# Page Config
 st.set_page_config(page_title="PredictiTrade", layout="centered")
+
 st.title("📈 AI Stock Trend Predictor (US Stocks)")
 
+# Sidebar: User Inputs
 ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
 
-def get_data(ticker):
-    df = yf.download(ticker, period="6mo")
+start_date = st.date_input("📅 Start date", pd.to_datetime("2024-01-01"))
+end_date = st.date_input("📅 End date", pd.to_datetime("today"))
+
+show_candle = st.checkbox("📊 Show Candlestick Chart", value=True)
+
+# Get Data
+@st.cache_data
+def get_data(ticker, start, end):
+    df = yf.download(ticker, start=start, end=end)
     df.dropna(inplace=True)
     df['Target'] = df['Close'].shift(-1) > df['Close']
-    df['SMA50'] = df['Close'].rolling(window=50).mean()
-    df['SMA100'] = df['Close'].rolling(window=100).mean()
-
-    delta = df['Close'].diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(window=14).mean()
-    avg_loss = loss.rolling(window=14).mean()
-    rs = avg_gain / avg_loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-
     df.dropna(inplace=True)
     return df
 
 if ticker:
     try:
-        df = get_data(ticker)
+        df = get_data(ticker, start_date, end_date)
 
-        st.subheader(f"📊 Closing Price Chart for {ticker.upper()}")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Close'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA50'], mode='lines', name='SMA50'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA100'], mode='lines', name='SMA100'))
-        fig.update_layout(title=f"{ticker.upper()} Price with SMA", xaxis_title="Date", yaxis_title="Price")
-        st.plotly_chart(fig)
+        st.subheader(f"📊 Data for {ticker.upper()} from {start_date} to {end_date}")
 
-        st.subheader("📐 Technical Indicators")
-        rsi_fig = px.line(df, x=df.index, y='RSI', title='Relative Strength Index (RSI)')
-        rsi_fig.add_hline(y=70, line_dash="dot", line_color="red")
-        rsi_fig.add_hline(y=30, line_dash="dot", line_color="green")
-        st.plotly_chart(rsi_fig)
+        if show_candle:
+            # Candlestick Chart
+            fig = go.Figure(data=[go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name="Candles"
+            )])
+            fig.update_layout(title=f"Candlestick chart for {ticker.upper()}", xaxis_title="Date", yaxis_title="Price")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.line_chart(df['Close'])
 
-        st.subheader("🧾 Raw Data")
         st.dataframe(df.tail())
 
+        # ML Part
         features = ['Open', 'High', 'Low', 'Close', 'Volume']
         X = df[features]
         y = df['Target']
@@ -70,6 +71,16 @@ if ticker:
         else:
             st.markdown("📉 The stock might go **DOWN** tomorrow.")
 
+        # Simple Chat Box
+        st.markdown("---")
+        st.markdown("🗨️ **Ask or Leave a Comment**")
+        user_message = st.text_input("💬 Type your message here:")
+
+        if user_message:
+            st.write("🤖 Bot Response:")
+            st.info("Thanks for your message! We will improve your experience soon. 🙌")
+
+        # Footer
         st.markdown("---")
         st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
         st.markdown("💻 Made by Precious Ofoyekpene")
