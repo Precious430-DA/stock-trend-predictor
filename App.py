@@ -1,55 +1,44 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-# Page setup
-st.set_page_config(page_title="📈 AI Stock Trend Predictor (US Stocks)")
 st.title("📈 AI Stock Trend Predictor (US Stocks)")
-st.markdown("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)")
+ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
 
-# Input
-ticker = st.text_input("Stock Ticker", value="AAPL")
+def get_data(ticker):
+    df = yf.download(ticker, period="6mo")
+    df.dropna(inplace=True)
+    df['Target'] = df['Close'].shift(-1) > df['Close']
+    df.dropna(inplace=True)
+    return df
 
 if ticker:
-    st.write(f"Latest data for **{ticker.upper()}**")
+    try:
+        df = get_data(ticker)
+        st.subheader(f"Latest data for {ticker}")
+        st.dataframe(df.tail())
 
-    # Load data
-    df = yf.download(ticker.upper(), period="6mo")
-
-    if df.empty:
-        st.error("Failed to fetch data. Please try another ticker.")
-    else:
-        # Feature Engineering
-        df['Tomorrow Close'] = df['Close'].shift(-1)
-        df['Target'] = (df['Tomorrow Close'] > df['Close']).astype(int)
-        df.dropna(inplace=True)
-
-        df['Open-Close'] = df['Open'] - df['Close']
-        df['High-Low'] = df['High'] - df['Low']
-
-        features = ['Open-Close', 'High-Low', 'Volume']
+        features = ['Open', 'High', 'Low', 'Close', 'Volume']
         X = df[features]
         y = df['Target']
 
-        # Split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
-
-        # Model
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+        model = RandomForestClassifier()
         model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-        # Evaluate
-        accuracy = accuracy_score(y_test, model.predict(X_test))
-        st.success(f"✅ Model trained with {round(accuracy * 100, 2)}% accuracy")
+        acc = accuracy_score(y_test, y_pred)
+        st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
 
-        # Predict tomorrow
-        latest_data = X.tail(1)
-        prediction = model.predict(latest_data)[0]
-
-        if prediction == 1:
-            st.markdown("📈 **Prediction: The stock might go UP tomorrow.**")
+        next_day = model.predict(X.tail(1))[0]
+        if next_day:
+            st.markdown("### 📈 Prediction: The stock might go **UP** tomorrow.")
         else:
-            st.markdown("📉 **Prediction: The stock might go DOWN tomorrow.**")
+            st.markdown("### 📉 Prediction: The stock might go **DOWN** tomorrow.")
+
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+
