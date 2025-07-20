@@ -4,47 +4,43 @@ import yfinance as yf
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-import plotly.graph_objects as go
 
 st.set_page_config(page_title="PredictiTrade", layout="centered")
-st.title("📈 AI Stock Trend Predictor (US Stocks)")
+st.title("📈 PredictiTrade – AI Stock Trend Predictor")
 
 ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
 
 def get_data(ticker):
     df = yf.download(ticker, period="6mo")
     df.dropna(inplace=True)
-    df['Target'] = df['Close'].shift(-1) > df['Close']
+    df['SMA20'] = df['Close'].rolling(window=20).mean()
     df['SMA50'] = df['Close'].rolling(window=50).mean()
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+    df['RSI'] = compute_rsi(df['Close'], 14)
+    df['Target'] = df['Close'].shift(-1) > df['Close']
     df.dropna(inplace=True)
     return df
+
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
 if ticker:
     try:
         df = get_data(ticker)
 
-        st.subheader(f"📊 Price Trend for {ticker.upper()}")
+        # Show main chart first
+        st.subheader(f"📊 {ticker.upper()} Price Chart")
+        st.line_chart(df[['Close']])
 
-        # Plotting with Plotly (Line chart)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Close'))
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA50'], mode='lines', name='SMA50'))
-        fig.update_layout(title=f"{ticker.upper()} Price & SMA50", xaxis_title="Date", yaxis_title="Price")
-        st.plotly_chart(fig, use_container_width=True)
-
-        # RSI chart
+        # Add indicator section
         st.subheader("📐 Technical Indicators")
-        fig_rsi = go.Figure()
-        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI'))
-        fig_rsi.update_layout(title="RSI (Relative Strength Index)", xaxis_title="Date", yaxis_title="RSI Value")
-        st.plotly_chart(fig_rsi, use_container_width=True)
+        st.line_chart(df[['SMA20', 'SMA50']])
+        st.line_chart(df[['RSI']])
 
-        st.dataframe(df[['Close', 'SMA50', 'RSI']].tail())
+        st.dataframe(df.tail())
 
         # Model training
         features = ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -66,9 +62,9 @@ if ticker:
         else:
             st.markdown("📉 The stock might go **DOWN** tomorrow.")
 
+        st.markdown("---")
+        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
+        st.markdown("💻 Made by Precious Ofoyekpene")
+
     except Exception as e:
         st.error(f"An error occurred: {e}")
-
-    st.markdown("---")
-    st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
-    st.markdown("💻 Made by Precious Ofoyekpene")
