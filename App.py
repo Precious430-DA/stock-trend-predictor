@@ -68,32 +68,51 @@ def create_features(df):
     """Create additional technical indicators as features"""
     df = df.copy()
     
-    # Price-based features
-    df['Price_Change'] = df['Close'].pct_change()
-    df['High_Low_Ratio'] = df['High'] / df['Low']
-    df['Open_Close_Ratio'] = df['Open'] / df['Close']
-    
-    # Moving averages
-    df['MA_5'] = df['Close'].rolling(window=5).mean()
-    df['MA_10'] = df['Close'].rolling(window=10).mean()
-    df['MA_20'] = df['Close'].rolling(window=20).mean()
-    
-    # Volatility
-    df['Volatility'] = df['Close'].rolling(window=10).std()
-    
-    # Volume indicators
-    df['Volume_MA'] = df['Volume'].rolling(window=10).mean()
-    df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
-    
-    # RSI (Relative Strength Index)
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # Target variable
-    df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+    try:
+        # Price-based features
+        df['Price_Change'] = df['Close'].pct_change()
+        df['High_Low_Ratio'] = df['High'] / df['Low']
+        df['Open_Close_Ratio'] = df['Open'] / df['Close']
+        
+        # Moving averages
+        df['MA_5'] = df['Close'].rolling(window=5).mean()
+        df['MA_10'] = df['Close'].rolling(window=10).mean()
+        df['MA_20'] = df['Close'].rolling(window=20).mean()
+        
+        # Volatility
+        df['Volatility'] = df['Close'].rolling(window=10).std()
+        
+        # Volume indicators (with error handling)
+        if 'Volume' in df.columns:
+            volume_ma = df['Volume'].rolling(window=10).mean()
+            df['Volume_MA'] = volume_ma
+            # Fix: Ensure we're doing element-wise division
+            df['Volume_Ratio'] = df['Volume'].div(volume_ma).fillna(1.0)
+        else:
+            df['Volume_MA'] = 1.0
+            df['Volume_Ratio'] = 1.0
+        
+        # RSI (Relative Strength Index)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        
+        # Avoid division by zero
+        rs = gain.div(loss).fillna(0)
+        df['RSI'] = 100 - (100 / (1 + rs))
+        df['RSI'] = df['RSI'].fillna(50)  # Fill NaN with neutral RSI value
+        
+        # Target variable
+        df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+        
+        # Fill any remaining NaN values
+        numeric_columns = df.select_dtypes(include=[np.number]).columns
+        df[numeric_columns] = df[numeric_columns].fillna(method='forward').fillna(method='backward')
+        
+    except Exception as e:
+        st.error(f"Error in feature engineering: {e}")
+        # Return minimal dataframe if feature engineering fails
+        df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
     
     return df
 
@@ -101,14 +120,38 @@ def create_features(df):
 @st.cache_data
 def get_data(ticker, start, end):
     try:
+        # Download data with progress disabled
         df = yf.download(ticker, start=start, end=end, progress=False)
+        
         if df.empty:
+            st.error(f"No data found for ticker '{ticker}'. Please check if it's a valid stock symbol.")
             return None
+            
+        if len(df) < 30:
+            st.warning(f"Limited data available ({len(df)} days). Consider extending the date range.")
+            
+        # Reset index to ensure proper datetime handling
+        df = df.reset_index()
+        df.set_index('Date', inplace=True)
+        
+        # Apply feature engineering
         df = create_features(df)
+        
+        # Drop rows with NaN values
+        initial_length = len(df)
         df.dropna(inplace=True)
+        
+        if len(df) == 0:
+            st.error("No valid data after processing. Try a different date range.")
+            return None
+            
+        if len(df) < initial_length * 0.7:
+            st.warning(f"Significant data loss during processing. Using {len(df)} out of {initial_length} rows.")
+            
         return df
+        
     except Exception as e:
-        st.error(f"Error downloading data: {e}")
+        st.error(f"Error downloading data: {str(e)}")
         return None
 
 # Main Application Logic
@@ -192,13 +235,26 @@ if ticker:
     # Machine Learning Section
     st.subheader("🤖 AI Prediction Model")
     
-    # Feature selection
+    # Feature selection with fallback
     feature_columns = ['Open', 'High', 'Low', 'Close', 'Volume', 'Price_Change', 
                       'High_Low_Ratio', 'MA_5', 'MA_10', 'MA_20', 'Volatility', 
                       'Volume_Ratio', 'RSI']
     
-    # Remove any columns that don't exist or have too many NaN values
-    available_features = [col for col in feature_columns if col in df.columns and df[col].notna().sum() > len(df) * 0.7]
+    # Only use features that exist and have sufficient data
+    available_features = []
+    for col in feature_columns:
+        if col in df.columns and df[col].notna().sum() > len(df) * 0.5:
+            available_features.append(col)
+    
+    # Fallback to basic features if advanced features failed
+    if len(available_features) < 5:
+        basic_features = ['Open', 'High', 'Low', 'Close', 'Volume']
+        available_features = [col for col in basic_features if col in df.columns]
+        st.info("Using basic features due to data processing issues.")
+    
+    if len(available_features) == 0:
+        st.error("No valid features available for modeling.")
+        st.stop()
     
     X = df[available_features]
     y = df['Target']
