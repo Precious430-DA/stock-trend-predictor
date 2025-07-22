@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
-from io import StringIO
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -33,23 +32,46 @@ def get_us_data(ticker, start, end):
 @st.cache_data
 def get_ngx_data(ticker):
     url = "https://research.gti.com.ng/ngx-daily-price-list/"
-    r = requests.get(url)
+    r = requests.get(url, timeout=10)
     soup = BeautifulSoup(r.text, "html.parser")
-    table = soup.find("table")
-    df = pd.read_html(str(table))[0]
-    df.columns = df.columns.str.strip()
-    df = df[df["Security"].str.upper() == ticker.upper()]
+    tables = pd.read_html(str(soup))
+
+    if not tables:
+        raise ValueError("No tables found.")
+
+    found = False
+    for table in tables:
+        if "COMPANY" in table.columns:
+            df = table
+            found = True
+            break
+    if not found:
+        raise ValueError("NGX table with expected columns not found.")
+
+    df.columns = df.columns.str.upper().str.strip()
+    df = df[df["COMPANY"].str.upper() == ticker.upper()]
+
+    if df.empty:
+        raise ValueError(f"{ticker.upper()} not found in NGX list.")
+
     df = df.rename(columns={
-        "Previous Close": "Open",
-        "High": "High",
-        "Low": "Low",
-        "Close": "Close",
-        "Volume": "Volume"
+        "PCLOSE": "Open",
+        "OPEN": "Open",  # Fallback if PCLOSE isn't available
+        "HIGH": "High",
+        "LOW": "Low",
+        "CLOSE": "Close",
+        "VOLUME": "Volume"
     })
-    df['Date'] = pd.to_datetime("today")  # Only today's data available
-    df.set_index('Date', inplace=True)
+
+    # Convert numeric columns
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    df['Date'] = pd.to_datetime("today")
+    df.set_index("Date", inplace=True)
     df['Target'] = df['Close'].shift(-1) > df['Close']
     df.dropna(inplace=True)
+
     return df
 
 # --- Main logic
@@ -91,27 +113,30 @@ if not df.empty:
 
     # --- ML Prediction
     features = ['Open', 'High', 'Low', 'Close', 'Volume']
-    X = df[features]
-    y = df['Target']
+    if all(col in df.columns for col in features):
+        X = df[features]
+        y = df['Target']
 
-    if len(df) < 5:
-        st.warning("📉 Not enough data to train ML model.")
-    else:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        model = RandomForestClassifier()
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
-
-        next_day = model.predict(X.tail(1))[0]
-        st.markdown("### 🔮 Prediction for Tomorrow:")
-        if next_day:
-            st.markdown("📈 The stock might go UP tomorrow.")
+        if len(df) < 5:
+            st.warning("📉 Not enough data to train ML model.")
         else:
-            st.markdown("📉 The stock might go DOWN tomorrow.")
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+            model = RandomForestClassifier()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
 
-# --- Simple Chat/Feedback
+            next_day = model.predict(X.tail(1))[0]
+            st.markdown("### 🔮 Prediction for Tomorrow:")
+            if next_day:
+                st.markdown("📈 The stock might go UP tomorrow.")
+            else:
+                st.markdown("📉 The stock might go DOWN tomorrow.")
+    else:
+        st.warning("⚠️ Required features missing from NGX data.")
+
+# --- Feedback
 st.markdown("---")
 st.markdown("🗨️ Ask or Leave a Comment")
 user_message = st.text_input("💬 Type your message here:")
