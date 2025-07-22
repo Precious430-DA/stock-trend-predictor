@@ -1,225 +1,310 @@
-import streamlit as st
-import pandas as pd
 import yfinance as yf
-import plotly.graph_objects as go
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
+import pandas as pd
+import streamlit as st
+from datetime import datetime, timedelta
+import time
 
-# Page Config
-st.set_page_config(page_title="PredictiTrade - Simple", layout="wide")
+# Comprehensive Stock Data Access Examples
 
-st.title("📈 Stock Predictor")
-st.write("*Simplified version to troubleshoot data issues*")
+st.title("📈 Comprehensive Stock Data Access Guide")
+st.markdown("*Learn how to access maximum stock data with yfinance and other sources*")
 
-# Sidebar
-with st.sidebar:
-    st.header("📊 Settings")
-    ticker = st.text_input("Stock Ticker", "AAPL")
-    start_date = st.date_input("Start Date", pd.to_datetime("2023-01-01"))
-    end_date = st.date_input("End Date", pd.to_datetime("today"))
+# 1. BASIC YFINANCE ACCESS
+st.header("1. 📊 Basic yfinance Access")
+st.code("""
+import yfinance as yf
 
-def download_and_process_data(ticker, start_date, end_date):
-    """Simple data download and processing with debugging"""
+# Basic download
+data = yf.download('AAPL', start='2020-01-01', end='2024-01-01')
+
+# Multiple stocks at once
+data = yf.download(['AAPL', 'MSFT', 'GOOGL'], start='2020-01-01', end='2024-01-01')
+
+# All available data for a stock
+data = yf.download('AAPL', period='max')
+""")
+
+# 2. ENHANCED DATA ACCESS
+st.header("2. 🚀 Enhanced Data Access")
+
+def get_comprehensive_stock_data(ticker, period='2y'):
+    """Get all available data for a stock"""
     try:
-        st.info(f"🔄 Downloading data for {ticker}...")
+        # Create ticker object for more detailed info
+        stock = yf.Ticker(ticker)
         
-        # Download data
-        data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+        # Get historical data
+        hist_data = stock.history(period=period)
         
-        if data.empty:
-            st.error(f"❌ No data found for {ticker}")
-            return None
-            
-        st.success(f"✅ Downloaded {len(data)} days of data")
+        # Get additional info
+        info = stock.info
         
-        # Show raw data info
-        st.write("**Raw Data Info:**")
-        st.write(f"- Shape: {data.shape}")
-        st.write(f"- Columns: {list(data.columns)}")
-        st.write(f"- Date range: {data.index[0]} to {data.index[-1]}")
+        # Get financials
+        try:
+            financials = stock.financials
+            balance_sheet = stock.balance_sheet
+            cashflow = stock.cashflow
+        except:
+            financials = balance_sheet = cashflow = None
         
-        # Check for missing values
-        missing_info = data.isnull().sum()
-        if missing_info.sum() > 0:
-            st.warning("⚠️ Missing values found:")
-            st.write(missing_info[missing_info > 0])
-        else:
-            st.success("✅ No missing values in raw data")
+        # Get dividends and splits
+        dividends = stock.dividends
+        splits = stock.splits
         
-        return data
+        # Get recommendations
+        try:
+            recommendations = stock.recommendations
+        except:
+            recommendations = None
         
+        # Get earnings
+        try:
+            earnings = stock.earnings
+            quarterly_earnings = stock.quarterly_earnings
+        except:
+            earnings = quarterly_earnings = None
+        
+        return {
+            'historical': hist_data,
+            'info': info,
+            'financials': financials,
+            'balance_sheet': balance_sheet,
+            'cashflow': cashflow,
+            'dividends': dividends,
+            'splits': splits,
+            'recommendations': recommendations,
+            'earnings': earnings,
+            'quarterly_earnings': quarterly_earnings
+        }
+    
     except Exception as e:
-        st.error(f"❌ Error downloading data: {str(e)}")
+        st.error(f"Error fetching data for {ticker}: {e}")
         return None
 
-def create_simple_features(df):
-    """Create simple features with extensive debugging"""
-    try:
-        st.info("🔄 Creating features...")
-        df = df.copy()
+# Demo with user input
+st.subheader("📝 Try Comprehensive Data Access")
+demo_ticker = st.text_input("Enter a stock ticker:", "AAPL")
+
+if demo_ticker and st.button("Get Comprehensive Data"):
+    with st.spinner(f"Fetching all available data for {demo_ticker}..."):
+        comprehensive_data = get_comprehensive_stock_data(demo_ticker)
+    
+    if comprehensive_data:
+        st.success("✅ Data retrieved successfully!")
         
-        # Basic features
-        df['Price_Change'] = df['Close'].pct_change()
-        st.write("✅ Created Price_Change")
+        # Historical data
+        if comprehensive_data['historical'] is not None and not comprehensive_data['historical'].empty:
+            st.subheader("📈 Historical Price Data")
+            st.write(f"Shape: {comprehensive_data['historical'].shape}")
+            st.dataframe(comprehensive_data['historical'].tail())
+            
+            # Show available columns
+            st.write("**Available columns:**", list(comprehensive_data['historical'].columns))
         
-        # Simple moving averages
-        df['MA_5'] = df['Close'].rolling(window=5, min_periods=1).mean()
-        df['MA_20'] = df['Close'].rolling(window=20, min_periods=1).mean()
-        st.write("✅ Created Moving Averages")
+        # Company info
+        if comprehensive_data['info']:
+            st.subheader("🏢 Company Information")
+            info_df = pd.DataFrame(list(comprehensive_data['info'].items()), 
+                                 columns=['Metric', 'Value'])
+            st.dataframe(info_df.head(20))
         
-        # Volatility
-        df['Volatility'] = df['Close'].rolling(window=10, min_periods=1).std()
-        st.write("✅ Created Volatility")
+        # Dividends
+        if comprehensive_data['dividends'] is not None and not comprehensive_data['dividends'].empty:
+            st.subheader("💰 Dividends")
+            st.dataframe(comprehensive_data['dividends'].tail())
         
-        # Target variable
-        df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
-        st.write("✅ Created Target variable")
-        
-        # Check for issues
-        st.write("**Feature Info:**")
-        for col in ['Price_Change', 'MA_5', 'MA_20', 'Volatility', 'Target']:
-            if col in df.columns:
-                nan_count = df[col].isnull().sum()
-                st.write(f"- {col}: {nan_count} NaN values")
+        # Recommendations
+        if comprehensive_data['recommendations'] is not None and not comprehensive_data['recommendations'].empty:
+            st.subheader("📊 Analyst Recommendations")
+            st.dataframe(comprehensive_data['recommendations'].tail())
+
+# 3. ACCESSING MULTIPLE STOCKS
+st.header("3. 🌍 Accessing Multiple Stocks")
+
+# Popular stock lists
+popular_stocks = {
+    "S&P 500 Sample": ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'JNJ', 'V'],
+    "Tech Giants": ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'NFLX', 'ADBE', 'CRM', 'ORCL'],
+    "Dow Jones Sample": ['AAPL', 'MSFT', 'JPM', 'JNJ', 'PG', 'UNH', 'HD', 'DIS', 'BA', 'MCD'],
+    "Crypto-Related": ['COIN', 'MSTR', 'RIOT', 'MARA', 'SQ', 'PYPL'],
+    "Banking": ['JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'USB', 'PNC', 'TFC', 'COF']
+}
+
+selected_list = st.selectbox("Select a stock list:", list(popular_stocks.keys()))
+
+if st.button("Download Multiple Stocks"):
+    tickers = popular_stocks[selected_list]
+    
+    with st.spinner(f"Downloading {len(tickers)} stocks..."):
+        try:
+            # Download multiple stocks at once
+            multi_data = yf.download(tickers, period='1y', group_by='ticker')
+            
+            st.success(f"✅ Downloaded data for {len(tickers)} stocks!")
+            st.write(f"**Shape:** {multi_data.shape}")
+            st.write(f"**Stocks:** {', '.join(tickers)}")
+            
+            # Show sample data for first stock
+            if len(tickers) > 1:
+                first_stock = tickers[0]
+                st.subheader(f"📊 Sample Data - {first_stock}")
+                st.dataframe(multi_data[first_stock].tail())
             else:
-                st.error(f"- {col}: Column missing!")
-        
-        # Drop NaN values
-        initial_rows = len(df)
-        df = df.dropna()
-        final_rows = len(df)
-        
-        st.info(f"🔄 Dropped NaN: {initial_rows} → {final_rows} rows ({final_rows/initial_rows*100:.1f}% retained)")
-        
-        if len(df) == 0:
-            st.error("❌ No data left after dropping NaN values")
-            return None
-            
-        return df
-        
-    except Exception as e:
-        st.error(f"❌ Error creating features: {str(e)}")
-        st.write("**Error details:**")
-        import traceback
-        st.code(traceback.format_exc())
-        return None
+                st.dataframe(multi_data.tail())
+                
+        except Exception as e:
+            st.error(f"Error downloading multiple stocks: {e}")
 
-# Main app logic
-if ticker:
-    if start_date >= end_date:
-        st.error("❌ Start date must be before end date")
-        st.stop()
-    
-    # Download data
-    raw_data = download_and_process_data(ticker, start_date, end_date)
-    
-    if raw_data is not None:
-        # Show sample of raw data
-        st.subheader("📋 Raw Data Sample")
-        st.dataframe(raw_data.head(), use_container_width=True)
-        
-        # Process features
-        processed_data = create_simple_features(raw_data)
-        
-        if processed_data is not None:
-            st.success(f"✅ Data processing complete! Final shape: {processed_data.shape}")
-            
-            # Show processed data
-            st.subheader("🔧 Processed Data Sample")
-            st.dataframe(processed_data.head(), use_container_width=True)
-            
-            # Basic chart
-            st.subheader("📊 Price Chart")
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data['Close'], 
-                                   mode='lines', name='Close Price'))
-            if 'MA_20' in processed_data.columns:
-                fig.add_trace(go.Scatter(x=processed_data.index, y=processed_data['MA_20'], 
-                                       mode='lines', name='MA 20'))
-            fig.update_layout(title=f"{ticker} Price Chart", xaxis_title="Date", yaxis_title="Price")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Machine Learning
-            st.subheader("🤖 Machine Learning Prediction")
-            
-            try:
-                # Select features
-                feature_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'Price_Change', 'MA_5', 'MA_20', 'Volatility']
-                available_features = [col for col in feature_cols if col in processed_data.columns]
-                
-                st.write(f"**Available features:** {available_features}")
-                
-                if len(available_features) < 3:
-                    st.error("❌ Not enough features for modeling")
-                else:
-                    X = processed_data[available_features]
-                    y = processed_data['Target']
-                    
-                    st.write(f"**Training data shape:** X={X.shape}, y={y.shape}")
-                    
-                    # Train/test split
-                    test_size = 0.2
-                    X_train, X_test, y_train, y_test = train_test_split(
-                        X, y, test_size=test_size, shuffle=False, random_state=42
-                    )
-                    
-                    st.write(f"**Train/Test split:** Train={len(X_train)}, Test={len(X_test)}")
-                    
-                    # Train model
-                    model = RandomForestClassifier(n_estimators=100, random_state=42)
-                    model.fit(X_train, y_train)
-                    
-                    # Predict
-                    y_pred = model.predict(X_test)
-                    accuracy = accuracy_score(y_test, y_pred)
-                    
-                    st.success(f"✅ Model trained! Accuracy: {accuracy*100:.2f}%")
-                    
-                    # Feature importance
-                    importance_df = pd.DataFrame({
-                        'Feature': available_features,
-                        'Importance': model.feature_importances_
-                    }).sort_values('Importance', ascending=False)
-                    
-                    st.write("**Feature Importance:**")
-                    st.dataframe(importance_df, use_container_width=True)
-                    
-                    # Tomorrow's prediction
-                    if len(X) > 0:
-                        last_row = X.tail(1)
-                        tomorrow_pred = model.predict(last_row)[0]
-                        tomorrow_prob = model.predict_proba(last_row)[0]
-                        
-                        st.subheader("🔮 Tomorrow's Prediction")
-                        if tomorrow_pred == 1:
-                            st.success(f"📈 **UP** - Confidence: {tomorrow_prob[1]*100:.1f}%")
-                        else:
-                            st.error(f"📉 **DOWN** - Confidence: {tomorrow_prob[0]*100:.1f}%")
-            
-            except Exception as e:
-                st.error(f"❌ Error in machine learning: {str(e)}")
-                import traceback
-                st.code(traceback.format_exc())
-        
+# 4. DIFFERENT TIME PERIODS AND INTERVALS
+st.header("4. ⏰ Different Time Periods & Intervals")
+
+st.code("""
+# Different periods
+periods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max']
+
+# Different intervals
+intervals = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
+
+# Examples:
+data_1min = yf.download('AAPL', period='1d', interval='1m')  # 1-minute data for 1 day
+data_weekly = yf.download('AAPL', period='2y', interval='1wk')  # Weekly data for 2 years
+data_monthly = yf.download('AAPL', period='10y', interval='1mo')  # Monthly data for 10 years
+""")
+
+# 5. INTERNATIONAL STOCKS
+st.header("5. 🌍 International Stocks")
+
+international_examples = {
+    "European": ["ASML", "SAP", "NESN.SW", "MC.PA", "AZN.L"],
+    "Asian": ["TSM", "BABA", "7203.T", "005930.KS", "2330.TW"],
+    "Canadian": ["SHOP.TO", "CNQ.TO", "RY.TO", "BNS.TO"],
+    "Australian": ["CBA.AX", "BHP.AX", "CSL.AX", "WBC.AX"]
+}
+
+st.write("**International Stock Examples:**")
+for region, stocks in international_examples.items():
+    st.write(f"**{region}:** {', '.join(stocks)}")
+
+# Test international stock
+test_international = st.selectbox("Test an international stock:", 
+                                ["ASML", "TSM", "NESN.SW", "SHOP.TO", "CBA.AX"])
+
+if st.button("Test International Stock"):
+    try:
+        intl_data = yf.download(test_international, period='3mo')
+        if not intl_data.empty:
+            st.success(f"✅ Successfully downloaded {test_international}")
+            st.dataframe(intl_data.tail())
         else:
-            st.error("❌ Feature processing failed")
-    else:
-        st.error("❌ Data download failed")
+            st.error(f"No data found for {test_international}")
+    except Exception as e:
+        st.error(f"Error: {e}")
 
-else:
-    st.info("👆 Enter a ticker symbol to start!")
+# 6. LIMITATIONS AND ALTERNATIVES
+st.header("6. ⚠️ Limitations & Professional Alternatives")
+
+st.markdown("""
+### 🚫 yfinance Limitations:
+- **Free but not guaranteed**: Yahoo Finance can change their API
+- **Rate limits**: Too many requests can get blocked
+- **Data quality**: Occasional missing or incorrect data
+- **Real-time limits**: 15-20 minute delay on free data
+- **No tick-by-tick data**: Limited to minute-level at best
+
+### 💰 Professional Data Sources:
+- **Alpha Vantage**: 500 free API calls/day
+- **IEX Cloud**: Reliable, reasonably priced
+- **Quandl/NASDAQ**: High-quality financial data
+- **Bloomberg API**: Professional grade (expensive)
+- **Refinitiv (Reuters)**: Institutional level
+- **Polygon.io**: Real-time and historical data
+- **TD Ameritrade API**: Free with account
+- **Interactive Brokers API**: Professional trading
+
+### 🔧 Code for Alpha Vantage Alternative:
+```python
+import requests
+import pandas as pd
+
+def get_alpha_vantage_data(symbol, api_key):
+    url = f'https://www.alphavantage.co/query'
+    params = {
+        'function': 'TIME_SERIES_DAILY',
+        'symbol': symbol,
+        'apikey': api_key,
+        'outputsize': 'full'
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+    return data
+```
+""")
+
+# 7. TIPS FOR MAXIMUM ACCESS
+st.header("7. 💡 Tips for Maximum Data Access")
+
+tips = [
+    "**Use ticker objects** for detailed info: `stock = yf.Ticker('AAPL')`",
+    "**Batch downloads** are more efficient: `yf.download(['AAPL', 'MSFT'])`",
+    "**Handle errors gracefully** - some stocks may not have all data types",
+    "**Use appropriate periods** - don't request 1-minute data for 10 years",
+    "**Cache data locally** to avoid repeated API calls",
+    "**Respect rate limits** - add delays between large requests",
+    "**Validate data** - check for missing values and outliers",
+    "**Keep backups** - save important datasets locally"
+]
+
+for tip in tips:
+    st.write(f"• {tip}")
+
+# 8. EXAMPLE: BUILDING A COMPREHENSIVE SCREENER
+st.header("8. 🔍 Example: Stock Screener")
+
+def create_stock_screener(tickers, min_volume=1000000, min_price=5):
+    """Create a simple stock screener"""
+    results = []
     
-    # Popular tickers
-    st.write("**Try these popular stocks:**")
-    cols = st.columns(4)
-    popular = ["AAPL", "MSFT", "GOOGL", "TSLA"]
-    for i, stock in enumerate(popular):
-        with cols[i]:
-            st.code(stock)
+    progress_bar = st.progress(0)
+    for i, ticker in enumerate(tickers):
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period='5d')
+            info = stock.info
+            
+            if not hist.empty and info:
+                latest = hist.iloc[-1]
+                avg_volume = hist['Volume'].mean()
+                price_change = ((latest['Close'] - hist.iloc[-5]['Close']) / hist.iloc[-5]['Close']) * 100
+                
+                if avg_volume >= min_volume and latest['Close'] >= min_price:
+                    results.append({
+                        'Ticker': ticker,
+                        'Price': latest['Close'],
+                        'Volume': avg_volume,
+                        '5D_Change_%': price_change,
+                        'Market_Cap': info.get('marketCap', 'N/A'),
+                        'Sector': info.get('sector', 'N/A')
+                    })
+            
+            progress_bar.progress((i + 1) / len(tickers))
+            time.sleep(0.1)  # Rate limiting
+            
+        except:
+            continue
+    
+    return pd.DataFrame(results)
+
+if st.button("Run Sample Stock Screener"):
+    sample_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX', 'ADBE', 'CRM']
+    
+    with st.spinner("Screening stocks..."):
+        screener_results = create_stock_screener(sample_tickers)
+    
+    if not screener_results.empty:
+        st.success("✅ Screening complete!")
+        st.dataframe(screener_results)
+    else:
+        st.warning("No stocks met the screening criteria")
 
 st.markdown("---")
-st.info("🐛 This is a debug version to identify data processing issues. Check the logs above for detailed information.")
+st.info("💡 **Pro Tip**: For production applications, consider paid APIs for reliability and real-time data!")
