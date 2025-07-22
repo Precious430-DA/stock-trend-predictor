@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 # Page Config
 st.set_page_config(page_title="PredictiTrade - Simple", layout="wide")
 
-st.title("📈 Stock Predictor - Debug Version")
+st.title("📈 Stock Predictor")
 st.write("*Simplified version to troubleshoot data issues*")
 
 # Sidebar
