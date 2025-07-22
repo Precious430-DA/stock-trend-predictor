@@ -32,7 +32,7 @@ def get_us_data(ticker, start, end):
 # --- Get NGX data (scraped from GTI)
 @st.cache_data
 def get_ngx_data(ticker):
-    url = "https://research.gti.com.ng/ngx-daily-price-list/"
+    url = "https://www.ngxgroup.com/market-data/prices/equities/"
     r = requests.get(url)
     soup = BeautifulSoup(r.text, "html.parser")
     table = soup.find("table")
