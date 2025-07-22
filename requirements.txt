@@ -1,7 +1,6 @@
 streamlit
+yfinance>=0.2.36
 pandas
-yfinance
-plotly
-scikit-learn
 numpy
-datetime
+scikit-learn
+plotly
