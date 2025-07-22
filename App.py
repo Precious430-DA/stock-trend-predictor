@@ -5,73 +5,67 @@ import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from datetime import datetime, timedelta
-
-st.set_page_config(page_title="PredictiTrade", layout="wide")
-
-st.title("📈 PredictiTrade: AI-Powered Stock Trend Predictor")
-
-# Sidebar Inputs
-ticker = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
-start_date = st.sidebar.date_input("Start Date", value=datetime.now() - timedelta(days=365))
-end_date = st.sidebar.date_input("End Date", value=datetime.now())
-
-# Download Data
-try:
-    data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-    if data.empty or len(data) < 50:
-        st.error("❌ Unable to load sufficient data. Check the ticker and date range.")
-        st.stop()
-except Exception as e:
-    st.error(f"Error downloading data: {e}")
-    st.stop()
-
-# Feature Engineering
-data['Return'] = data['Close'].pct_change()
-data['Target'] = (data['Return'].shift(-1) > 0).astype(int)
-
-# Drop rows with NaN
-data.dropna(inplace=True)
-
-# Features
-features = ['Open', 'High', 'Low', 'Close', 'Volume']
-X = data[features]
-y = data['Target']
-
-# Train/Test Split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-
-# Model
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-predictions = model.predict(X_test)
-
-# Accuracy
-accuracy = accuracy_score(y_test, predictions)
-
-# Display
-st.subheader(f"Model Accuracy: {accuracy * 100:.2f}%")
-
-# Add predictions to DataFrame
-data = data.iloc[-len(y_test):]
-data['Prediction'] = predictions
-
-# Candlestick Chart
-fig = go.Figure(data=[go.Candlestick(x=data.index,
-                open=data['Open'],
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'])])
-fig.update_layout(title=f"{ticker} Candlestick Chart", xaxis_rangeslider_visible=False)
-st.plotly_chart(fig, use_container_width=True)
-
-# Prediction Result Table
-st.subheader("📊 Prediction Results")
-st.dataframe(data[['Open', 'High', 'Low', 'Close', 'Prediction']].tail(10))
-
-# Footer
-st.markdown("""
-<style>
-footer {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
+# Page Config
+st.set_page_config(page_title="PredictiTrade", layout="centered")
+st.title("📈 AI Stock Trend Predictor (US Stocks)")
+# Sidebar: User Inputs
+ticker = st.text_input("Enter US stock ticker (e.g., AAPL, MSFT, TSLA)", "AAPL")
+start_date = st.date_input("📅 Start date", pd.to_datetime("2024-01-01"))
+end_date = st.date_input("📅 End date", pd.to_datetime("today"))
+show_candle = st.checkbox("📊 Show Candlestick Chart", value=True)
+# Get Data
+@st.cache_data
+def get_data(ticker, start, end):
+    df = yf.download(ticker, start=start, end=end)
+    df.dropna(inplace=True)
+    df['Target'] = df['Close'].shift(-1) > df['Close']
+    df.dropna(inplace=True)
+    return df
+if ticker:
+    try:
+        df = get_data(ticker, start_date, end_date)
+        st.subheader(f"📊 Data for {ticker.upper()} from {start_date} to {end_date}")
+        if show_candle:
+            # Candlestick Chart
+            fig = go.Figure(data=[go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name="Candles"
+            )])
+            fig.update_layout(title=f"Candlestick chart for {ticker.upper()}", xaxis_title="Date", yaxis_title="Price")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.line_chart(df['Close'])
+        st.dataframe(df.tail())
+        # ML Part
+        features = ['Open', 'High', 'Low', 'Close', 'Volume']
+        X = df[features]
+        y = df['Target']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+        model = RandomForestClassifier()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        st.success(f"✅ Model trained with {acc*100:.2f}% accuracy")
+        next_day = model.predict(X.tail(1))[0]
+        st.markdown("### 🔮 Prediction for Tomorrow:")
+        if next_day:
+            st.markdown("📈 The stock might go UP tomorrow.")
+        else:
+            st.markdown("📉 The stock might go DOWN tomorrow.")
+        # Simple Chat Box
+        st.markdown("---")
+        st.markdown("🗨️ Ask or Leave a Comment")
+        user_message = st.text_input("💬 Type your message here:")
+        if user_message:
+            st.write("🤖 Bot Response:")
+            st.info("Thanks for your message! We will improve your experience soon. 🙌")
+        # Footer
+        st.markdown("---")
+        st.markdown("🧠 Powered by [yfinance](https://pypi.org/project/yfinance/), [scikit-learn](https://scikit-learn.org/), and [Streamlit](https://streamlit.io/)")
+        st.markdown("💻 Made by Precious Ofoyekpene")
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
