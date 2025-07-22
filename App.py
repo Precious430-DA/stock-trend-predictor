@@ -67,28 +67,36 @@ with st.sidebar:
 def create_features(df):
     df = df.copy()
 
+    # Price-based features
     df['Price_Change'] = df['Close'].pct_change()
     df['High_Low_Ratio'] = df['High'] / df['Low']
     df['Open_Close_Ratio'] = df['Open'] / df['Close']
     
+    # Moving averages
     df['MA_5'] = df['Close'].rolling(window=5).mean()
     df['MA_10'] = df['Close'].rolling(window=10).mean()
     df['MA_20'] = df['Close'].rolling(window=20).mean()
     
+    # Volatility
     df['Volatility'] = df['Close'].rolling(window=10).std()
     
-    df['Volume_MA'] = df['Volume'].rolling(window=10).mean()
-    df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
+    # Volume indicators (safe method)
+    volume_series = df['Volume'].copy()
+    df['Volume_MA'] = volume_series.rolling(window=10).mean()
+    df['Volume_Ratio'] = volume_series / df['Volume_MA']
     
+    # RSI
     delta = df['Close'].diff()
     gain = delta.where(delta > 0, 0).rolling(window=14).mean()
     loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
+    # Target variable
     df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
     
     return df
+
 
 # Get and process data
 @st.cache_data
